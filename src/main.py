@@ -17,14 +17,33 @@ class ProcessFile(DoFn):
         self.gcs = GcsIO()
         logging.info(f"GcsIO instance: {self.gcs}")
 
+class ProcessFile(DoFn):
+    def start_bundle(self):
+        from apache_beam.io.gcp.gcsio import GcsIO
+        self.gcs = GcsIO()
+        logging.info(f"GcsIO instance: {self.gcs}")
+
     def process(self, element, *args, **kwargs):
         try:
             file_name = element.attributes['name']
-            bucket_name = element.attributes['bucket']
-            logging.info(f"Processing file: {file_name} in bucket {bucket_name}")
+            source_bucket_name = element.attributes['bucket']
+            logging.info(f"Processing file: {file_name} in bucket {source_bucket_name}")
+
+            # Get the file size
+            source_file_path = f"gs://{source_bucket_name}/{file_name}"
+            file_size = self.gcs.size(source_file_path)
+            logging.info(f"File size: {file_size} bytes")
+
+            # Copy the file to a new bucket
+            destination_bucket_name = 'untar'
+            destination_file_path = f"gs://{destination_bucket_name}/{file_name}"
+            self.gcs.copy(source_file_path, destination_file_path)
+            logging.info(f"File copied to: {destination_file_path}")
+
             # ...rest of the code...
         except KeyError as e:
             logging.error(f"Required attribute is missing in the message: {e}")
+
 
 
 
