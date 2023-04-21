@@ -4,7 +4,6 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam import PTransform, DoFn
 from apache_beam.io import ReadFromPubSub
 from apache_beam.io.gcp.pubsub import PubsubMessage
-from apache_beam.io.gcp.gcsio import GcsIO
 import logging
 import sys
 
@@ -23,6 +22,26 @@ class ProcessFile(DoFn):
         self.gcs = GcsIO()
         logging.info(f"GcsIO instance: {self.gcs}")
 
+class ProcessFile(DoFn):
+    def start_bundle(self):
+        from apache_beam.io.gcp.gcsio import GcsIO
+        self.gcs = GcsIO()
+        logging.info(f"GcsIO instance: {self.gcs}")
+
+        # Move the import statement here
+        from untar_helper import untar_and_upload
+        self.untar_and_upload = untar_and_upload
+
+class ProcessFile(DoFn):
+    def start_bundle(self):
+        from apache_beam.io.gcp.gcsio import GcsIO
+        import tarfile
+        from io import BytesIO
+        self.gcs = GcsIO()
+        self.tarfile = tarfile
+        self.BytesIO = BytesIO
+        logging.info(f"GcsIO instance: {self.gcs}")
+
     def process(self, element, *args, **kwargs):
         try:
             file_name = element.attributes['name']
@@ -34,17 +53,27 @@ class ProcessFile(DoFn):
             file_size = self.gcs.size(source_file_path)
             logging.info(f"File size: {file_size} bytes")
 
-            # Copy the file to a new bucket
+            # Read the tar.gz file and upload its contents to the destination bucket
             destination_bucket_name = 'untar'
-            destination_file_path = f"gs://{destination_bucket_name}/{file_name}"
-            self.gcs.copy(source_file_path, destination_file_path)
-            logging.info(f"File copied to: {destination_file_path}")
+            with self.gcs.open(source_file_path, 'rb') as f:
+                with self.tarfile.open(fileobj=f, mode='r|gz') as tar:
+                    for member in tar:
+                        if not member.isfile():
+                            continue
+                        
+                        # Read the file from the tarball
+                        file_data = tar.extractfile(member).read()
+                        
+                        # Write the file to the destination bucket
+                        destination_file_path = f"gs://{destination_bucket_name}/{member.name}"
+                        with self.gcs.open(destination_file_path, 'wb') as dest_file:
+                            dest_file.write(file_data)
+
+            logging.info(f"Contents of {file_name} uploaded to bucket {destination_bucket_name}")
 
             # ...rest of the code...
         except KeyError as e:
             logging.error(f"Required attribute is missing in the message: {e}")
-
-
 
 
 class ReadAndProcessFiles(PTransform):
