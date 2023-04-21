@@ -11,28 +11,6 @@ import sys
 class ProcessFile(DoFn):
     def start_bundle(self):
         from apache_beam.io.gcp.gcsio import GcsIO
-        self.gcs = GcsIO()
-        logging.info(f"GcsIO instance: {self.gcs}")
-
-class ProcessFile(DoFn):
-    def start_bundle(self):
-        from apache_beam.io.gcp.gcsio import GcsIO
-        self.gcs = GcsIO()
-        logging.info(f"GcsIO instance: {self.gcs}")
-
-class ProcessFile(DoFn):
-    def start_bundle(self):
-        from apache_beam.io.gcp.gcsio import GcsIO
-        self.gcs = GcsIO()
-        logging.info(f"GcsIO instance: {self.gcs}")
-
-        # Move the import statement here
-        from untar_helper import untar_and_upload
-        self.untar_and_upload = untar_and_upload
-
-class ProcessFile(DoFn):
-    def start_bundle(self):
-        from apache_beam.io.gcp.gcsio import GcsIO
         import tarfile
         from io import BytesIO
         self.gcs = GcsIO()
