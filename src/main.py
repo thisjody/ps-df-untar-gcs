@@ -8,8 +8,6 @@ import logging
 import sys
 
 
-
-
 class ProcessFile(DoFn):
     def start_bundle(self):
         from apache_beam.io.gcp.gcsio import GcsIO
