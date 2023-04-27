@@ -2,10 +2,11 @@ import argparse
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam import PTransform, DoFn
-from apache_beam.io import ReadFromPubSub
+from apache_beam.io import ReadFromPubSub, WriteToPubSub
 from apache_beam.io.gcp.pubsub import PubsubMessage
 import logging
 import sys
+import json  # Import json to create a message in JSON format
 
 
 class ProcessFile(DoFn):
@@ -13,10 +14,12 @@ class ProcessFile(DoFn):
         from apache_beam.io.gcp.gcsio import GcsIO
         import tarfile
         from io import BytesIO
+        from apache_beam.io.gcp.pubsub import PubsubMessage  # Add this import
         self.gcs = GcsIO()
         self.tarfile = tarfile
         self.BytesIO = BytesIO
         logging.info(f"GcsIO instance: {self.gcs}")
+        self.PubsubMessage = PubsubMessage  # Instantiate PubsubMessage
 
     def process(self, element, *args, **kwargs):
         try:
@@ -47,20 +50,34 @@ class ProcessFile(DoFn):
 
             logging.info(f"Contents of {file_name} uploaded to bucket {destination_bucket_name}")
 
-            # ...rest of the code...
+            # Create a message for the second Dataflow pipeline
+            message = {
+                'file_name': file_name,
+                'source_bucket': source_bucket_name,
+                'destination_bucket': destination_bucket_name,
+                'file_size': file_size
+            }
+
+            # Return the message as a PubsubMessage instance
+            return [json.dumps(message).encode('utf-8')]  # Return the message data as bytes
+
+
+        
         except KeyError as e:
             logging.error(f"Required attribute is missing in the message: {e}")
 
 
 class ReadAndProcessFiles(PTransform):
-    def __init__(self, topic):
+    def __init__(self, topic, output_topic):
         self.topic = topic
+        self.output_topic = output_topic
 
     def expand(self, pcoll):
         return (
             pcoll
             | "Read from Pub/Sub" >> ReadFromPubSub(topic=self.topic, with_attributes=True).with_output_types(PubsubMessage)
             | "Process files" >> beam.ParDo(ProcessFile())
+            | "Write to Pub/Sub" >> WriteToPubSub(topic=self.output_topic)  # Added this line to write messages to OUTPUT_TOPIC
         )
 
 
@@ -68,11 +85,12 @@ def main(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", required=True, help="Google Cloud project ID")
     parser.add_argument("--topic", required=True, help="Pub/Sub topic")
+    parser.add_argument("--output_topic", required=True, help="Pub/Sub output topic")  # Add an argument for the output topic
     parser.add_argument("--runner", default="DirectRunner", help="Pipeline runner")
     args, _ = parser.parse_known_args(argv)
     pipeline_options = PipelineOptions(runner=args.runner, project=args.project)
     with beam.Pipeline(options=pipeline_options) as pipeline:
-        _ = pipeline | "Listen to Pub/Sub topic" >> ReadAndProcessFiles(topic=args.topic)
+        _ = pipeline | "Listen to Pub/Sub topic" >> ReadAndProcessFiles(topic=args.topic, output_topic=args.output_topic)  # Pass output_topic to ReadAndProcessFiles
 
 
 if __name__ == "__main__":
