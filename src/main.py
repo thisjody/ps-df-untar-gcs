@@ -34,6 +34,7 @@ class ProcessFile(DoFn):
 
             # Read the tar.gz file and upload its contents to the destination bucket
             destination_bucket_name = 'untar'
+            directory_structure = []
             with self.gcs.open(source_file_path, 'rb') as f:
                 with self.tarfile.open(fileobj=f, mode='r|gz') as tar:
                     for member in tar:
@@ -42,6 +43,9 @@ class ProcessFile(DoFn):
                         
                         # Read the file from the tarball
                         file_data = tar.extractfile(member).read()
+
+                        # Add the file path and size to the directory structure
+                        directory_structure.append({'path': member.name, 'size': member.size})
                         
                         # Write the file to the destination bucket
                         destination_file_path = f"gs://{destination_bucket_name}/{member.name}"
@@ -55,7 +59,8 @@ class ProcessFile(DoFn):
                 'file_name': file_name,
                 'source_bucket': source_bucket_name,
                 'destination_bucket': destination_bucket_name,
-                'file_size': file_size
+                'file_size': file_size,
+                'directory_structure': directory_structure
             }
 
             # Return the message as a PubsubMessage instance
