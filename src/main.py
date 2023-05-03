@@ -37,9 +37,15 @@ class ProcessFile(DoFn):
             directory_structure = []
             with self.gcs.open(source_file_path, 'rb') as f:
                 with self.tarfile.open(fileobj=f, mode='r|gz') as tar:
+                    top_level_dir = None
                     for member in tar:
                         if not member.isfile():
                             continue
+
+                        # Extract the top-level directory
+                        if top_level_dir is None:
+                            top_level_dir = member.name.split('/')[0]
+                            logging.info(f"Top level directory set: {top_level_dir}")  # Log the top-level directory when it is set
                         
                         # Read the file from the tarball
                         file_data = tar.extractfile(member).read()
@@ -53,6 +59,7 @@ class ProcessFile(DoFn):
                             dest_file.write(file_data)
 
             logging.info(f"Contents of {file_name} uploaded to bucket {destination_bucket_name}")
+            logging.info(f"Top level directory: {top_level_dir}")  # Log the top-level directory after processing the tar.gz file
 
             # Create a message for the second Dataflow pipeline
             message = {

@@ -7,6 +7,7 @@ setup(
     install_requires=[
         'apache-beam[gcp]',
         'google-cloud-pubsub',
+        'google-cloud-bigquery',
         'google-cloud-storage',
     ],
 )
