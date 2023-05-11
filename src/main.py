@@ -6,7 +6,7 @@ from apache_beam.io import ReadFromPubSub, WriteToPubSub
 from apache_beam.io.gcp.pubsub import PubsubMessage
 import logging
 import sys
-import json  # Import json to create a message in JSON format
+import json
 
 
 class ProcessFile(DoFn):
@@ -17,12 +17,16 @@ class ProcessFile(DoFn):
         from apache_beam.io.gcp.pubsub import PubsubMessage
         from google.cloud import bigquery
         from google.api_core.exceptions import NotFound
+        import re
+        import os
         self.gcs = GcsIO()
         self.tarfile = tarfile
         self.BytesIO = BytesIO
         self.bigquery = bigquery
         self.NotFound = NotFound
-        logging.info(f"GcsIO instance: {self.gcs}")
+        self.re = re
+        self.os = os
+        #logging.info(f"GcsIO instance: {self.gcs}")
         self.PubsubMessage = PubsubMessage
 
     def process(self, element, *args, **kwargs):
@@ -37,7 +41,9 @@ class ProcessFile(DoFn):
             logging.info(f"File size: {file_size} bytes")
 
             # Read the tar.gz file and upload its contents to the destination bucket
-            destination_bucket_name = 'untar'
+            destination_bucket_name = 'eielson-untar'
+            #destination_bucket_name = self.os.getenv('DESTINATION_BUCKET', 'default-bucket-name')
+            #logging.info(f"destination bucket: {destination_bucket_name}")
             directory_structure = []
             with self.gcs.open(source_file_path, 'rb') as f:
                 with self.tarfile.open(fileobj=f, mode='r|gz') as tar:
@@ -48,7 +54,14 @@ class ProcessFile(DoFn):
 
                         # Extract the top-level directory
                         if top_level_dir is None:
-                            top_level_dir = member.name.split('/')[0].replace('-', '_')
+                            logging.info(f"Top level directory arrives as: {member.name}")
+                            #Ignore hidden files or directories
+                            if not member.name.startswith('.'):
+                                top_level_dir = member.name.split('/')[0].replace('-', '_')
+                                pattern = r"^\d{4}_\d{2}_\d{2}$"  # Pattern to match YYYY_MM_DD
+                                if not self.re.match(pattern, top_level_dir):  # Check if top_level_dir matches the pattern
+                                    logging.error(f"Invalid top-level directory: {top_level_dir}. Skipping file: {file_name}")
+                                    return  # Skip processing this tar.gz file if the top-level directory is invalid
                             logging.info(f"Top level directory set: {top_level_dir}")  # Log the top-level directory when it is set
                         
                         # Read the file from the tarball
@@ -71,7 +84,6 @@ class ProcessFile(DoFn):
             # Use 'top_level_dir' as the dataset ID
             dataset_id = top_level_dir
             dataset_ref = client.dataset(dataset_id)
-            dataset = None
 
             try:
                 dataset = client.get_dataset(dataset_ref)
@@ -84,6 +96,7 @@ class ProcessFile(DoFn):
             # Create a message for the second Dataflow pipeline
             message = {
                 'file_name': file_name,
+                'dataset_id': dataset_id,
                 'source_bucket': source_bucket_name,
                 'destination_bucket': destination_bucket_name,
                 'file_size': file_size,
