@@ -94,19 +94,17 @@ class ProcessFile(DoFn):
                 logging.info(f"Dataset '{dataset_id}' created.")
 
             # Create a message for the second Dataflow pipeline
+            #remove for now 'directory_structure': directory_structure
             message = {
                 'file_name': file_name,
                 'dataset_id': dataset_id,
                 'source_bucket': source_bucket_name,
                 'destination_bucket': destination_bucket_name,
                 'file_size': file_size,
-                'directory_structure': directory_structure
             }
 
             # Return the message as a PubsubMessage instance
-            return [json.dumps(message).encode('utf-8')]  # Return the message data as bytes
-
-
+            return [json.dumps(message).encode('utf-8')]
         
         except KeyError as e:
             logging.error(f"Required attribute is missing in the message: {e}")
