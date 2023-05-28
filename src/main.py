@@ -10,25 +10,22 @@ import json
 
 
 class ProcessFile(DoFn):
+    def __init__(self, project_id):  # Add this line
+        self.project_id = project_id  # And this line
+
     def start_bundle(self):
-        from apache_beam.io.gcp.bigquery import BigQueryDisposition
         from apache_beam.io.gcp.gcsio import GcsIO
         import tarfile
         from io import BytesIO
-        from apache_beam.io.gcp.pubsub import PubsubMessage
-        from google.cloud import bigquery
         from google.api_core.exceptions import NotFound
         import re
         import os
-        self.BigQueryDisposition = BigQueryDisposition
         self.gcs = GcsIO()
         self.tarfile = tarfile
         self.BytesIO = BytesIO
-        self.bigquery = bigquery
         self.NotFound = NotFound
         self.re = re
         self.os = os
-        self.PubsubMessage = PubsubMessage
 
     def process(self, element, *args, **kwargs):
         try:
@@ -44,7 +41,6 @@ class ProcessFile(DoFn):
             # Read the tar.gz file and upload its contents to the destination bucket
             destination_bucket_name = 'eielson-untar'
             #logging.info(f"destination bucket: {destination_bucket_name}")
-            directory_structure = []
             with self.gcs.open(source_file_path, 'rb') as f:
                 with self.tarfile.open(fileobj=f, mode='r|gz') as tar:
                     top_level_dir = None
@@ -66,9 +62,6 @@ class ProcessFile(DoFn):
                         
                         # Read the file from the tarball
                         file_data = tar.extractfile(member).read()
-
-                        # Add the file path and size to the directory structure
-                        directory_structure.append({'path': member.name, 'size': member.size})
                         
                         # Write the file to the destination bucket
                         destination_file_path = f"gs://{destination_bucket_name}/{member.name}"
@@ -78,35 +71,16 @@ class ProcessFile(DoFn):
             logging.info(f"Contents of {file_name} uploaded to bucket {destination_bucket_name}")
             logging.info(f"Top level directory: {top_level_dir}")  # Log the top-level directory after processing the tar.gz file
 
-            # Connect to BigQuery
-            client = self.bigquery.Client()
-
             # Use 'top_level_dir' as the dataset ID
             dataset_id = top_level_dir
-            dataset_ref = client.dataset(dataset_id)
 
-            try:
-                dataset = client.get_dataset(dataset_ref)
-                logging.info(f"Dataset '{dataset_id}' already exists.")
-            except self.NotFound:  # Use NotFound instead of self.NotFound
-                logging.info(f"Dataset '{dataset_id}' not found. Creating...")
-                dataset = client.create_dataset(self.bigquery.Dataset(dataset_ref))
-                logging.info(f"Dataset '{dataset_id}' created.")
+            # Use the directory as the table name
+            table_id = "vtnd"
 
-            table_id = "vtnd"  # change this to something more dynamic soon
-            table_ref = dataset_ref.table(table_id)
-            try:
-                table = client.get_table(table_ref)  # Make an API request.
-                logging.info(f"Table {table_id} already exists in the dataset {dataset_id}")
-            except self.NotFound:
-                table = client.create_table(table_ref)  # Make an API request.
-                logging.info(f"Created table {table_id} in the dataset {dataset_id}")
-
-            # Create a message for the second Dataflow pipeline
-            #remove for now 'directory_structure': directory_structure
             message = {
-                'file_name': file_name,
+                'project_id': self.project_id,
                 'dataset_id': dataset_id,
+                'table_id' : table_id,
                 'source_bucket': source_bucket_name,
                 'destination_bucket': destination_bucket_name,
                 'file_size': file_size,
@@ -120,16 +94,17 @@ class ProcessFile(DoFn):
 
 
 class ReadAndProcessFiles(PTransform):
-    def __init__(self, topic, output_topic):
+    def __init__(self, topic, output_topic, project_id):
         self.topic = topic
         self.output_topic = output_topic
+        self.project_id = project_id
 
     def expand(self, pcoll):
         return (
             pcoll
             | "Read from Pub/Sub" >> ReadFromPubSub(topic=self.topic, with_attributes=True).with_output_types(PubsubMessage)
-            | "Process files" >> beam.ParDo(ProcessFile())
-            | "Write to Pub/Sub" >> WriteToPubSub(topic=self.output_topic)  # Added this line to write messages to OUTPUT_TOPIC
+            | "Process files" >> beam.ParDo(ProcessFile(self.project_id))
+            | "Write to Pub/Sub" >> WriteToPubSub(topic=self.output_topic)
         )
 
 
@@ -142,7 +117,7 @@ def main(argv):
     args, _ = parser.parse_known_args(argv)
     pipeline_options = PipelineOptions(runner=args.runner, project=args.project)
     with beam.Pipeline(options=pipeline_options) as pipeline:
-        _ = pipeline | "Listen to Pub/Sub topic" >> ReadAndProcessFiles(topic=args.topic, output_topic=args.output_topic)  # Pass output_topic to ReadAndProcessFiles
+        _ = pipeline | "Listen to Pub/Sub topic" >> ReadAndProcessFiles(project_id=args.project, topic=args.topic, output_topic=args.output_topic)  # Pass output_topic to ReadAndProcessFiles
 
 
 if __name__ == "__main__":
