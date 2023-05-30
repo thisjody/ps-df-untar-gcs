@@ -1,0 +1,21 @@
+# .gitignore
+
+#credential
+src/airgcpdev.json
+
+# Python files
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+*.log
+*.sqlite
+
+# Virtual environment
+bin/
+include/
+lib/
+lib64/
+pyvenv.cfg
+share/

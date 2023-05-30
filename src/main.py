@@ -53,6 +53,7 @@ class ProcessFile(DoFn):
                             logging.info(f"Top level directory arrives as: {member.name}")
                             #Ignore hidden files or directories
                             if not member.name.startswith('.'):
+                                top_level_dir_original = member.name.split('/')[0]
                                 top_level_dir = member.name.split('/')[0].replace('-', '_')
                                 pattern = r"^\d{4}_\d{2}_\d{2}$"  # Pattern to match YYYY_MM_DD
                                 if not self.re.match(pattern, top_level_dir):  # Check if top_level_dir matches the pattern
@@ -72,6 +73,7 @@ class ProcessFile(DoFn):
             logging.info(f"Top level directory: {top_level_dir}")  # Log the top-level directory after processing the tar.gz file
 
             # Use 'top_level_dir' as the dataset ID
+            original_date = top_level_dir_original
             dataset_id = top_level_dir
 
             # Use the directory as the table name
@@ -81,6 +83,7 @@ class ProcessFile(DoFn):
                 'project_id': self.project_id,
                 'dataset_id': dataset_id,
                 'table_id' : table_id,
+                'original_date' : original_date,
                 'source_bucket': source_bucket_name,
                 'destination_bucket': destination_bucket_name,
                 'file_size': file_size,
